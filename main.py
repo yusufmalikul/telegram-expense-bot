@@ -2,64 +2,68 @@ import os
 import json
 import requests
 from fastapi import FastAPI, Request
-from telegram import Update, Bot
-from telegram.constants import ParseMode
+from telegram import Update
+from telegram.ext import Application, ContextTypes
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+from telegram.ext import CommandHandler, MessageHandler, filters
 
-bot = Bot(token=TOKEN)
 app = FastAPI()
 
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Hello! I'm alive.")
+
+
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
+    prompt = f"""Extract the expense from this message, dont convert the currency, default is IDR:
+    "{user_message}"
+
+    Respond only with JSON like:
+    {{
+        "item": "<item>",
+        "amount": <number>,
+        "currency": "USD"
+    }}"""
+
+    headers = {"Content-Type": "application/json"}
+    body = {"contents": [{"parts": [{"text": prompt}]}]}
+    gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+
+    try:
+        response = requests.post(gemini_url, headers=headers, json=body)
+        result = response.json()
+
+        parsed = result["candidates"][0]["content"]["parts"][0]["text"]
+        parsed_clean = parsed.strip().strip('`')
+        if parsed_clean.startswith("json"):
+            parsed_clean = parsed_clean[4:].strip()
+
+        expense = json.loads(parsed_clean)
+
+        await update.message.reply_text(
+            f"✅ Parsed:\nItem: {expense['item']}\nAmount: {expense['amount']} {expense['currency']}"
+        )
+
+    except Exception as e:
+        print("Error:", e)
+        await update.message.reply_text(
+            "❌ Couldn't understand that. Try something like: 'coffee $5'"
+        )
+
+
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+
 @app.post("/")
-async def telegram_webhook(req: Request):
-    body = await req.json()
-    update = Update.de_json(body, bot)
-
-    if update.message and update.message.text:
-        text = update.message.text
-        chat_id = update.message.chat_id
-
-        if text.startswith("/start"):
-            await bot.send_message(chat_id=chat_id, text="Hello! I'm alive.")
-            return {"ok": True}
-
-        prompt = f"""Extract the expense from this message, dont convert the currency, default is IDR:
-        "{text}"
-
-        Respond only with JSON like:
-        {{
-            "item": "<item>",
-            "amount": <number>,
-            "currency": "USD"
-        }}"""
-
-        headers = {"Content-Type": "application/json"}
-        body = {"contents": [{"parts": [{"text": prompt}]}]}
-        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-
-        try:
-            response = requests.post(gemini_url, headers=headers, json=body)
-            result = response.json()
-            print("Gemini raw response:", result)
-
-            parsed = result["candidates"][0]["content"]["parts"][0]["text"]
-            parsed_clean = parsed.strip().strip('`')
-            if parsed_clean.startswith("json"):
-                parsed_clean = parsed_clean[4:].strip()
-
-            expense = json.loads(parsed_clean)
-
-            await bot.send_message(
-                chat_id=chat_id,
-                text=f"✅ Parsed:\nItem: {expense['item']}\nAmount: {expense['amount']} {expense['currency']}"
-            )
-
-        except Exception as e:
-            print("Error:", e)
-            await bot.send_message(
-                chat_id=chat_id,
-                text="❌ Couldn't understand that. Try something like: 'coffee $5'"
-            )
-
+async def webhook(req: Request):
+    data = await req.json()
+    update = Update.de_json(data, telegram_app.bot)
+    await telegram_app.process_update(update)
     return {"ok": True}

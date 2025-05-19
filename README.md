@@ -10,6 +10,13 @@ A Telegram bot that helps you track expenses by automatically parsing expense me
 - 🌐 FastAPI backend
 - 🚀 Deployable on Vercel
 
+## TODO
+
+- [ ] Implement persistent storage for expenses (e.g., database integration, google sheet, airtable)
+- [ ] Add expense history and reporting features
+- [ ] Support expense categorization
+- [ ] Add data export functionality
+
 ## How It Works
 
 1. Send a message to the bot with your expense (e.g., "coffee $5" or "lunch 150000 IDR")

@@ -62,7 +62,6 @@ uvicorn main:app --reload
 
 2. Set up a webhook for your Telegram bot (you can use ngrok for local development):
 ```bash
-curl -F "url=https://your-domain.com/" https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-vercel-webhook-domain.com/"
 ```
 
